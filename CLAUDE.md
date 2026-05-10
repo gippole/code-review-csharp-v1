@@ -15,21 +15,21 @@ There are no tests and no lint configuration. The solution uses the modern `.sln
 ## What This Is
 
 A WPF desktop application that performs AI-powered C# code review entirely locally, using:
-- **Microsoft Foundry Local** (`Microsoft.AI.Foundry.Local.WinML` v1.1.0) — manages a local ONNX inference web service
-- **Phi-4-mini** model — downloaded and cached on first run, served at `http://127.0.0.1:55599`
-- **OpenAI SDK** (`OpenAI` v2.10.0) — communicates with the local service via the OpenAI-compatible API
+- **Microsoft Foundry Local** (`Microsoft.AI.Foundry.Local.WinML` v1.1.0) — manages model download, caching, and the inference lifecycle; provides `OpenAIChatClient` for chat completions
+- **OpenAI SDK** (`OpenAI` v2.10.0) — present as a dependency but chat is handled via the Foundry Local `OpenAIChatClient` (which internally uses `Betalgo.Ranul.OpenAI` v9.1.0)
 
 Target: `net9.0-windows10.0.26100.0` (WPF, Windows-only). The UI is in Japanese.
+
+Current model: **`qwen3-4b`** (alias registered in the Foundry Local catalog). Run `foundry model list` to confirm available aliases. A commented-out alternative `qwen2.5-coder-1.5b` exists in the source.
 
 ## Architecture
 
 **`CodeReviewService.cs`** — the only service class. Manages the full Foundry Local lifecycle:
-1. Creates a `FoundryLocalManager` and downloads/caches the `phi-4-mini` model alias
-2. Starts the local web service; creates an `OpenAIClient` pointing at the local endpoint
-3. `ReviewAsync(code, ct)` — streams a JSON response from the model, parses it into `ReviewItem[]`
-4. Implements `IAsyncDisposable`: unloads model then stops the web service on disposal
+1. Creates a `FoundryLocalManager` and downloads/caches the model
+2. `ReviewAsync(code, ct)` — streams a JSON response from the model via `OpenAIChatClient`, parses it into `ReviewItem[]`
+3. Implements `IAsyncDisposable`: unloads model then disposes the logger factory on disposal
 
-The model is instructed via a hardcoded system prompt to return JSON `{"findings": [...]}`. If JSON parsing fails, a single fallback `ReviewItem` describing the parse error is returned instead of throwing.
+The model is instructed via a hardcoded system prompt to return JSON `{"findings": [...]}`. `ParseResponse` strips Qwen3 `<think>...</think>` blocks, then strips markdown fences, then deserializes. If JSON parsing fails, a single fallback `ReviewItem` describing the parse error is returned instead of throwing.
 
 **`MainWindow.xaml/.xaml.cs`** — all UI logic. Key patterns:
 - `ShowState(string)` drives visibility for the four UI states: `Empty`, `Loading`, `Results`, `NoIssues`
@@ -43,7 +43,8 @@ The model is instructed via a hardcoded system prompt to return JSON `{"findings
 
 ## Key Design Decisions
 
-- All configuration is hardcoded: model alias `"phi-4-mini"`, service URL `http://127.0.0.1:55599`
 - `Task.Run()` wraps `InitializeAsync` and `DisposeAsync` to keep the UI thread unblocked
 - Logging minimum level is `Warning`; the Foundry Local manager receives a console logger
-- The `ReviewItem` record and `Severity` enum are the only public data types; internal JSON DTOs (`ReviewResponse`, `FindingDto`) are private records in `CodeReviewService.cs`
+- `chatClient.Settings.MaxTokens = 4096` is set explicitly — local models default to a very small limit (often 256–512 tokens) that truncates JSON mid-response
+- The system prompt begins with `/no_think` to disable Qwen3's thinking mode; `ParseResponse` also strips `<think>...</think>` as a fallback in case thinking output leaks through
+- Chat is performed via `IModel.GetChatClientAsync()` → `OpenAIChatClient` (Foundry Local's own client), not the standard `OpenAI.Chat.ChatClient`. Use `chatClient.Settings.*` to tune generation parameters (Temperature, MaxTokens, TopP, FrequencyPenalty)
