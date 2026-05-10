@@ -120,14 +120,14 @@ public class CodeReviewService : IAsyncDisposable
 
         var sb = new StringBuilder();
 
-        // Create a chat message
-        List<ChatMessage> messages = new()
-        {
+        ChatMessage[] messages =
+        [
             new ChatMessage { Role = "system", Content = systemPrompt },
             new ChatMessage { Role = "user", Content = userPrompt }
-        };
+        ];
 
-        var streamingResponse = chatClient.CompleteChatStreamingAsync(messages, null, ct);
+        chatClient.Settings.MaxTokens = 8192;
+        var streamingResponse = chatClient.CompleteChatStreamingAsync(messages, ct);
         await foreach (var chunk in streamingResponse)
         {
             if (chunk.Choices.Count > 0)
@@ -135,6 +135,9 @@ public class CodeReviewService : IAsyncDisposable
         }
 
         return ParseResponse(sb.ToString());
+
+        //var response = chatClient.CompleteChatAsync(messages, ct);
+        //return ParseResponse(response.Result.Choices[0].Message.Content ?? "");
     }
 
     // ── Cleanup ─────────────────────────────────────
@@ -153,6 +156,7 @@ public class CodeReviewService : IAsyncDisposable
 
 
     private static string BuildSystemPrompt() => """
+        /no_think
         You are a senior software engineer performing a focused code review.
         Your task: identify ONLY concrete issues — careless mistakes and security concerns.
         Do NOT praise the code. Do NOT suggest style preferences.
@@ -165,7 +169,7 @@ public class CodeReviewService : IAsyncDisposable
               "category": "セキュリティ" | "うっかりミス" | "潜在バグ" | "その他",
               "title": "<short title in Japanese, max 50 chars>",
               "description": "<concrete explanation in Japanese, 1-3 sentences>",
-              "line_hint": "<optional: relevant code fragment or line keyword>"
+              "line_hint": "<optional: relevant identifier or short keyword — use single quotes for any string literals, never double quotes>"
             }
           ]
         }
@@ -183,9 +187,15 @@ public class CodeReviewService : IAsyncDisposable
 
     private static List<ReviewItem> ParseResponse(string raw)
     {
-        // Strip possible markdown fences
+        // Strip Qwen3 thinking block if present
         var json = raw.Trim();
+        var thinkEnd = json.IndexOf("</think>", StringComparison.Ordinal);
+        if (thinkEnd >= 0) json = json[(thinkEnd + 8)..].TrimStart();
+
+        // Strip possible markdown fences
         if (json.StartsWith("```")) json = StripFences(json);
+
+        json = RepairUnescapedQuotes(json);
 
         try
         {
@@ -212,7 +222,7 @@ public class CodeReviewService : IAsyncDisposable
                     Category = "その他",
                     Title = "レスポンスの解析に失敗しました",
                     Description = "AIの応答をJSONとして解析できませんでした。モデルの応答: " +
-                                  raw[..Math.Min(200, raw.Length)],
+                                  raw[..Math.Min(8192, raw.Length)],
                 }
             };
         }
@@ -224,6 +234,61 @@ public class CodeReviewService : IAsyncDisposable
         "MED" or "MEDIUM" => Severity.Med,
         _ => Severity.Low
     };
+
+    // Repairs unescaped " inside JSON string values produced by LLMs.
+    // Heuristic: a " is a closing quote only if followed (ignoring whitespace) by : , } ] or end-of-input.
+    // Everything else is an unescaped internal quote and gets escaped as \".
+    private static string RepairUnescapedQuotes(string json)
+    {
+        var sb = new StringBuilder(json.Length + 16);
+        bool inString = false;
+
+        for (int i = 0; i < json.Length; i++)
+        {
+            char c = json[i];
+
+            // Honour existing escape sequences — copy both chars and skip
+            if (c == '\\' && inString)
+            {
+                sb.Append(c);
+                if (i + 1 < json.Length)
+                    sb.Append(json[++i]);
+                continue;
+            }
+
+            if (c != '"')
+            {
+                sb.Append(c);
+                continue;
+            }
+
+            if (!inString)
+            {
+                inString = true;
+                sb.Append(c);
+                continue;
+            }
+
+            // Inside a string: decide if this " closes it or is an internal unescaped quote.
+            // A closing " is followed (past whitespace) by a JSON structural character.
+            int j = i + 1;
+            while (j < json.Length && json[j] is ' ' or '\t' or '\r' or '\n') j++;
+            bool isStructural = j >= json.Length || json[j] is ':' or ',' or '}' or ']';
+
+            if (isStructural)
+            {
+                inString = false;
+                sb.Append(c);
+            }
+            else
+            {
+                sb.Append('\\');
+                sb.Append(c);
+            }
+        }
+
+        return sb.ToString();
+    }
 
     private static string StripFences(string s)
     {
