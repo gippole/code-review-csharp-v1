@@ -3,6 +3,7 @@ using Microsoft.AI.Foundry.Local;
 using Microsoft.Extensions.Logging;
 using OpenAI;
 using System.ClientModel;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -59,6 +60,7 @@ public class CodeReviewService : IAsyncDisposable
     // Run `foundry model list` to confirm the alias on your machine.
     //private const string ModelAlias = "qwen2.5-coder-1.5b";
     private const string ModelAlias = "qwen3-4b";
+    //private const string ModelAlias = "qwen3.5-4b";
 
     private ILoggerFactory? _loggerFactory;
     private FoundryLocalManager? _manager;
@@ -80,12 +82,25 @@ public class CodeReviewService : IAsyncDisposable
         {
             AppName = "CodeReviewApp",
             LogLevel = Microsoft.AI.Foundry.Local.LogLevel.Debug,
+#if false // モデルやログのディレクトリを変えたいとき
+            ModelCacheDir = Path.Combine(Environment.CurrentDirectory, "cache\\", "models\\"),
+            LogsDir = Path.Combine(Environment.CurrentDirectory, "logs\\"),
+            AppDataDir = Path.Combine(Environment.CurrentDirectory, "data\\")
+#endif
         };
 
         await FoundryLocalManager.CreateAsync(config, logger);
         _manager = FoundryLocalManager.Instance;
 
         var catalog = await _manager.GetCatalogAsync();
+#if false
+        var models = await catalog.ListModelsAsync();
+
+        foreach (var model in models)
+        {
+            Console.WriteLine(model.Id);
+        }
+#endif
         _model = await catalog.GetModelAsync(ModelAlias)
                  ?? throw new InvalidOperationException(
                      $"モデル '{ModelAlias}' がカタログに見つかりません。\n" +
@@ -157,9 +172,19 @@ public class CodeReviewService : IAsyncDisposable
 
     private static string BuildSystemPrompt() => """
         /no_think
+        ### Role
         You are a senior software engineer performing a focused code review.
-        Your task: identify ONLY concrete issues — careless mistakes and security concerns.
-        Do NOT praise the code. Do NOT suggest style preferences.
+
+        ### Task
+        Identify ONLY concrete issues: careless logic mistakes and security concerns.
+        - Do NOT praise the code.
+        - Do NOT suggest style preferences or "clean code" improvements.
+
+        ### Constraints
+        - Assume the code builds and compiles successfully.
+        - Function and variable names are assumed to be correct.
+        - Focus strictly on logic, potential runtime errors, and security vulnerabilities.
+        - If no issues are found, reply only with No issues identified.
 
         Respond strictly in the following JSON format (no markdown, no preamble):
         {
