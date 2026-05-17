@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:code_review_csharp_v1"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800"
+        Title="Code Review App" Height="450" Width="800"
         Background="#0D0D1E">
     <Window.Resources>
         <SolidColorBrush x:Key="BorderBrush" Color="#2D2D50" />
