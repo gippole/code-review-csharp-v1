@@ -1,12 +1,17 @@
-﻿<Window x:Class="code_review_csharp_v1.MainWindow"
+<Window x:Class="code_review_csharp_v1.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:avalonedit="http://icsharpcode.net/sharpdevelop/avalonedit"
         xmlns:local="clr-namespace:code_review_csharp_v1"
         mc:Ignorable="d"
-        Title="Code Review App" Height="450" Width="800"
-        Background="#0D0D1E">
+        Title="ローカル AI コードレビュー" Height="680" Width="1100" MinHeight="500" MinWidth="850"
+        Background="#0D0D1E"
+        AllowDrop="True"
+        Drop="Window_Drop"
+        DragOver="Window_DragOver">
+
     <Window.Resources>
         <SolidColorBrush x:Key="BorderBrush" Color="#2D2D50" />
         <SolidColorBrush x:Key="SeverityLowBrush" Color="#4CAF50" />
@@ -21,48 +26,14 @@
             <GradientStop Color="#7B61FF" Offset="0.0" />
             <GradientStop Color="#4C3FCC" Offset="1.0" />
         </LinearGradientBrush>
-        <!-- ===== ScrollBar style (thin, dark) ===== -->
-        <Style x:Key="ThinScrollBar" TargetType="ScrollBar">
-            <Setter Property="Width" Value="6"/>
-            <Setter Property="Background" Value="Transparent"/>
-        </Style>
-
-        <!-- ===== Code TextBox ===== -->
-        <Style x:Key="CodeBox" TargetType="TextBox">
-            <Setter Property="Background" Value="#12121E"/>
-            <Setter Property="Foreground" Value="#D4D4D4"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="10"/>
-            <Setter Property="FontFamily" Value="Cascadia Code, Consolas, Courier New"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="AcceptsReturn" Value="True"/>
-            <Setter Property="AcceptsTab" Value="True"/>
-            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
-            <Setter Property="HorizontalScrollBarVisibility" Value="Auto"/>
-            <Setter Property="TextWrapping" Value="NoWrap"/>
-            <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TextBox">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="6">
-                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
 
         <!-- ===== Primary Button ===== -->
         <Style x:Key="PrimaryButton" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="24,10"/>
-            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="20,9"/>
+            <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -82,7 +53,7 @@
                                 <Setter TargetName="Bd" Property="Background" Value="#5E4FCC"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Background" Value="#44446A"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#33334D"/>
                                 <Setter Property="Foreground" Value="#666688"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -91,13 +62,15 @@
             </Setter>
         </Style>
 
-        <!-- ===== Ghost Button ===== -->
-        <Style x:Key="GhostButton" TargetType="Button">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        <!-- ===== Danger/Cancel Button ===== -->
+        <Style x:Key="DangerButton" TargetType="Button">
+            <Setter Property="Background" Value="#4D1F24"/>
+            <Setter Property="Foreground" Value="#FF6B6B"/>
+            <Setter Property="BorderBrush" Value="#80333A"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -112,8 +85,84 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#6B2830"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#38151A"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Bd" Property="Background" Value="#2A2A3E"/>
+                                <Setter Property="Foreground" Value="#666688"/>
+                                <Setter Property="BorderBrush" Value="#3D3D50"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===== Ghost Button ===== -->
+        <Style x:Key="GhostButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#252542"/>
                                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#1A1A30"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#505070"/>
+                                <Setter Property="BorderBrush" Value="#202035"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===== Mini Button ===== -->
+        <Style x:Key="MiniButton" TargetType="Button">
+            <Setter Property="Background" Value="#252540"/>
+            <Setter Property="Foreground" Value="#B0B0D8"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#35355A"/>
+                                <Setter Property="Foreground" Value="White"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -123,10 +172,9 @@
 
         <!-- ===== Section Label ===== -->
         <Style x:Key="SectionLabel" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-            <Setter Property="Margin" Value="0,0,0,6"/>
         </Style>
 
         <!-- ===== Status Bar ===== -->
@@ -136,7 +184,7 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
-        <!-- ===== Severity Badge template helper (used in DataTemplate) ===== -->
+        <!-- ===== Converters ===== -->
         <local:SeverityToColorConverter x:Key="SevColorConv"/>
         <local:SeverityToLabelConverter x:Key="SevLabelConv"/>
         <local:SeverityToIconConverter x:Key="SevIconConv"/>
@@ -146,51 +194,76 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <!-- Title bar -->
-            <RowDefinition Height="56"/>
+            <!-- Title / Header bar -->
+            <RowDefinition Height="60"/>
             <!-- Main content -->
             <RowDefinition Height="*"/>
             <!-- Status bar -->
             <RowDefinition Height="36"/>
         </Grid.RowDefinitions>
 
-        <!-- ===== Title bar ===== -->
+        <!-- ===== Header Bar ===== -->
         <Border Grid.Row="0" Background="{StaticResource BgMidBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
             <Grid Margin="20,0">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="🔍" FontSize="22" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Logo & Title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="🔍" FontSize="22" VerticalAlignment="Center" Margin="0,0,12,0"/>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="ローカル AI コードレビュー"
-                                   FontSize="16" FontWeight="SemiBold"
+                                   FontSize="16" FontWeight="Bold"
                                    Foreground="{StaticResource TextPrimaryBrush}"/>
-                        <TextBlock Text="Foundry Local  ·  Phi-4-mini  ·  CPU推論"
+                        <TextBlock Text="Foundry Local  ·  オンデバイス高速推論"
                                    FontSize="11"
                                    Foreground="{StaticResource TextSecondaryBrush}"/>
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Init status badge -->
-                <Border x:Name="InitBadge" HorizontalAlignment="Right" VerticalAlignment="Center"
-                        CornerRadius="12" Padding="12,4"
-                        Background="#332A52">
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="InitDot" Width="8" Height="8" Margin="0,0,6,0"
-                                 Fill="#888"/>
-                        <TextBlock x:Name="InitLabel" Text="初期化待ち"
-                                   FontSize="12"
-                                   Foreground="{StaticResource TextSecondaryBrush}"/>
-                    </StackPanel>
-                </Border>
+                <!-- Model Switcher & Device Badge -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Model selector -->
+                    <TextBlock Text="モデル:" VerticalAlignment="Center" FontSize="12"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="ModelCombo" Width="200" Height="30" VerticalContentAlignment="Center"
+                              Margin="0,0,16,0"
+                              SelectionChanged="ModelCombo_SelectionChanged"/>
+
+                    <!-- Device badge -->
+                    <Border x:Name="DeviceBadge" CornerRadius="12" Padding="10,4" Margin="0,0,12,0"
+                            Background="#1E284A" BorderBrush="#35467A" BorderThickness="1">
+                        <TextBlock x:Name="DeviceLabel" Text="⚡ GPU (WebGPU)"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="#79A8FF" VerticalAlignment="Center"/>
+                    </Border>
+
+                    <!-- Init status badge -->
+                    <Border x:Name="InitBadge" VerticalAlignment="Center"
+                            CornerRadius="12" Padding="12,4"
+                            Background="#332A52">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="InitDot" Width="8" Height="8" Margin="0,0,6,0"
+                                     Fill="#888"/>
+                            <TextBlock x:Name="InitLabel" Text="初期化待ち"
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
             </Grid>
         </Border>
 
-        <!-- ===== Main content (Left: Code | Right: Results) ===== -->
+        <!-- ===== Main content (Left: Code Editor | Right: Results) ===== -->
         <Grid Grid.Row="1" Margin="16">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" MinWidth="300"/>
+                <ColumnDefinition Width="*" MinWidth="350"/>
                 <ColumnDefinition Width="8"/>
-                <ColumnDefinition Width="*" MinWidth="300"/>
+                <ColumnDefinition Width="*" MinWidth="350"/>
             </Grid.ColumnDefinitions>
 
             <!-- ── Left panel: Code input ── -->
@@ -201,31 +274,62 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Header -->
+                <!-- Header & Quick actions -->
                 <Grid Grid.Row="0" Margin="0,0,0,8">
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="📝  コード入力" VerticalAlignment="Center"/>
-                    <Button x:Name="ClearBtn" Content="クリア"
-                            Style="{StaticResource GhostButton}"
-                            HorizontalAlignment="Right"
-                            FontSize="12" Padding="10,4"
-                            Click="ClearBtn_Click"/>
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="📝  C# コード入力 (DnD対応)" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="OpenFileBtn" Content="📂 開く"
+                                Style="{StaticResource GhostButton}"
+                                Margin="0,0,6,0"
+                                Click="OpenFileBtn_Click"/>
+                        <Button x:Name="PasteBtn" Content="📋 貼付"
+                                Style="{StaticResource GhostButton}"
+                                Margin="0,0,6,0"
+                                Click="PasteBtn_Click"/>
+                        <Button x:Name="ClearBtn" Content="🗑️ クリア"
+                                Style="{StaticResource GhostButton}"
+                                Click="ClearBtn_Click"/>
+                    </StackPanel>
                 </Grid>
 
-                <!-- Code TextBox -->
-                <TextBox x:Name="CodeInput" Grid.Row="1"
-                         Style="{StaticResource CodeBox}"
-                         Text="// ここにレビューしたいコードを貼り付けてください"
-                         GotFocus="CodeInput_GotFocus"/>
+                <!-- AvalonEdit Code Editor -->
+                <Border Grid.Row="1" CornerRadius="6"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                        ClipToBounds="True">
+                    <avalonedit:TextEditor x:Name="CodeEditor"
+                                           Background="#12121E"
+                                           Foreground="#D4D4D4"
+                                           LineNumbersForeground="#606085"
+                                           FontFamily="Cascadia Code, Consolas, Courier New"
+                                           FontSize="13"
+                                           ShowLineNumbers="True"
+                                           WordWrap="False"
+                                           HorizontalScrollBarVisibility="Auto"
+                                           VerticalScrollBarVisibility="Auto"/>
+                </Border>
 
-                <!-- Action buttons -->
-                <StackPanel Grid.Row="2" Orientation="Horizontal"
-                            HorizontalAlignment="Right" Margin="0,10,0,0">
-                    <Button x:Name="ReviewBtn"
-                            Content="▶  コードレビュー開始"
-                            Style="{StaticResource PrimaryButton}"
-                            IsEnabled="False"
-                            Click="ReviewBtn_Click"/>
-                </StackPanel>
+                <!-- Action buttons (Review & Cancel) -->
+                <Grid Grid.Row="2" Margin="0,12,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                        <TextBlock x:Name="LineInfoText" Text="行 1, 列 1"
+                                   FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="CancelBtn"
+                                Content="⏹  中止"
+                                Style="{StaticResource DangerButton}"
+                                Margin="0,0,8,0"
+                                Visibility="Collapsed"
+                                Click="CancelBtn_Click"/>
+                        <Button x:Name="ReviewBtn"
+                                Content="▶  コードレビュー開始"
+                                Style="{StaticResource PrimaryButton}"
+                                IsEnabled="False"
+                                Click="ReviewBtn_Click"/>
+                    </StackPanel>
+                </Grid>
             </Grid>
 
             <!-- ── Splitter ── -->
@@ -241,30 +345,35 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <!-- Results header with summary badges -->
+                <!-- Results header with summary badges & Copy button -->
                 <Grid Grid.Row="0" Margin="8,0,0,8">
                     <TextBlock Style="{StaticResource SectionLabel}" Text="📋  レビュー結果" VerticalAlignment="Center"/>
-                    <StackPanel x:Name="SummaryPanel" Orientation="Horizontal"
-                                HorizontalAlignment="Right" Visibility="Collapsed">
-                        <Border x:Name="HighBadge" CornerRadius="10" Padding="8,2" Margin="2,0"
-                                Background="#3A1515">
-                            <TextBlock x:Name="HighCount" FontSize="11" FontWeight="Bold"
-                                       Foreground="{StaticResource SeverityHighBrush}"/>
-                        </Border>
-                        <Border x:Name="MedBadge" CornerRadius="10" Padding="8,2" Margin="2,0"
-                                Background="#3A2C15">
-                            <TextBlock x:Name="MedCount" FontSize="11" FontWeight="Bold"
-                                       Foreground="{StaticResource SeverityMedBrush}"/>
-                        </Border>
-                        <Border x:Name="LowBadge" CornerRadius="10" Padding="8,2" Margin="2,0"
-                                Background="#153A20">
-                            <TextBlock x:Name="LowCount" FontSize="11" FontWeight="Bold"
-                                       Foreground="{StaticResource SeverityLowBrush}"/>
-                        </Border>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <!-- Summary badges -->
+                        <StackPanel x:Name="SummaryPanel" Orientation="Horizontal" Visibility="Collapsed" Margin="0,0,10,0">
+                            <Border x:Name="HighBadge" CornerRadius="10" Padding="8,2" Margin="2,0" Background="#3A1515">
+                                <TextBlock x:Name="HighCount" FontSize="11" FontWeight="Bold"
+                                           Foreground="{StaticResource SeverityHighBrush}"/>
+                            </Border>
+                            <Border x:Name="MedBadge" CornerRadius="10" Padding="8,2" Margin="2,0" Background="#3A2C15">
+                                <TextBlock x:Name="MedCount" FontSize="11" FontWeight="Bold"
+                                           Foreground="{StaticResource SeverityMedBrush}"/>
+                            </Border>
+                            <Border x:Name="LowBadge" CornerRadius="10" Padding="8,2" Margin="2,0" Background="#153A20">
+                                <TextBlock x:Name="LowCount" FontSize="11" FontWeight="Bold"
+                                           Foreground="{StaticResource SeverityLowBrush}"/>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- Copy Markdown button -->
+                        <Button x:Name="CopyMarkdownBtn" Content="📋 Markdown コピー"
+                                Style="{StaticResource GhostButton}"
+                                Visibility="Collapsed"
+                                Click="CopyMarkdownBtn_Click"/>
                     </StackPanel>
                 </Grid>
 
-                <!-- Results list -->
+                <!-- Results container -->
                 <Border Grid.Row="1" Margin="8,0,0,0"
                         Background="{StaticResource BgMidBrush}"
                         BorderBrush="{StaticResource BorderBrush}"
@@ -273,19 +382,28 @@
                         <!-- Empty state -->
                         <StackPanel x:Name="EmptyState"
                                     VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="🤖" FontSize="40" HorizontalAlignment="Center"/>
-                            <TextBlock Text="コードを貼り付けてレビューを開始してね"
+                            <TextBlock Text="🤖" FontSize="44" HorizontalAlignment="Center"/>
+                            <TextBlock Text="コードを入力して「コードレビュー開始」を押してください"
                                        FontSize="13" Margin="0,12,0,0"
                                        Foreground="{StaticResource TextSecondaryBrush}"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="(.cs ファイルを直接ドラッグ＆ドロップしても読み込めます)"
+                                       FontSize="11" Margin="0,6,0,0"
+                                       Foreground="#606085"
                                        HorizontalAlignment="Center"/>
                         </StackPanel>
 
                         <!-- Loading state -->
                         <StackPanel x:Name="LoadingState" Visibility="Collapsed"
                                     VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <TextBlock Text="⚡" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,10"/>
                             <TextBlock x:Name="LoadingText"
                                        Text="レビュー中..."
-                                       FontSize="13"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="推論には数秒から十数秒かかります..."
+                                       FontSize="11" Margin="0,6,0,0"
                                        Foreground="{StaticResource TextSecondaryBrush}"
                                        HorizontalAlignment="Center"/>
                         </StackPanel>
@@ -299,14 +417,15 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate DataType="{x:Type local:ReviewItem}">
                                         <!-- ===== Review Card ===== -->
-                                        <Border Margin="0,0,0,10" CornerRadius="8"
+                                        <Border Margin="0,0,0,12" CornerRadius="8"
                                                 Background="{StaticResource BgCardBrush}"
-                                                BorderThickness="1,1,1,1">
+                                                BorderThickness="1">
                                             <Border.BorderBrush>
                                                 <Binding Path="Severity" Converter="{StaticResource SevColorConv}"/>
                                             </Border.BorderBrush>
                                             <Grid Margin="14,12">
                                                 <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
                                                     <RowDefinition Height="Auto"/>
                                                     <RowDefinition Height="Auto"/>
                                                     <RowDefinition Height="Auto"/>
@@ -351,6 +470,7 @@
                                                                    Margin="0,0,0,1"/>
                                                         <TextBlock Text="{Binding Title}"
                                                                    FontWeight="SemiBold"
+                                                                   FontSize="13"
                                                                    Foreground="{StaticResource TextPrimaryBrush}"
                                                                    TextWrapping="Wrap"/>
                                                     </StackPanel>
@@ -365,18 +485,67 @@
                                                            FontSize="12"
                                                            LineHeight="18"/>
 
-                                                <!-- Line hint (optional) -->
+                                                <!-- Line hint tag (Clickable jump) -->
                                                 <Border Grid.Row="2"
                                                         Visibility="{Binding LineHint, Converter={StaticResource NullToCollapsed}}"
                                                         Margin="0,8,0,0"
                                                         Background="#12121E"
                                                         CornerRadius="4"
-                                                        Padding="8,4">
-                                                    <TextBlock Text="{Binding LineHint}"
-                                                               FontFamily="Cascadia Code, Consolas"
-                                                               FontSize="11"
-                                                               Foreground="#9CDCFE"
-                                                               TextWrapping="Wrap"/>
+                                                        Padding="8,4"
+                                                        Cursor="Hand"
+                                                        MouseLeftButtonDown="LineHint_MouseLeftButtonDown"
+                                                        ToolTip="クリックしてエディタの該当箇所へジャンプ">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="🎯 " FontSize="11" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="{Binding LineHint}"
+                                                                   FontFamily="Cascadia Code, Consolas"
+                                                                   FontSize="11"
+                                                                   Foreground="#9CDCFE"
+                                                                   TextWrapping="Wrap"
+                                                                   VerticalAlignment="Center"/>
+                                                        <TextBlock Text=" (クリックでジャンプ)" FontSize="10" Foreground="#5A5A7A" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <!-- Suggested Fix Block (if present) -->
+                                                <Border Grid.Row="3"
+                                                        Visibility="{Binding SuggestedFix, Converter={StaticResource NullToCollapsed}}"
+                                                        Margin="0,10,0,0"
+                                                        Background="#101524"
+                                                        BorderBrush="#253555"
+                                                        BorderThickness="1"
+                                                        CornerRadius="6"
+                                                        Padding="10">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
+                                                        </Grid.RowDefinitions>
+
+                                                        <Grid Grid.Row="0" Margin="0,0,0,6">
+                                                            <TextBlock Text="💡 推奨される修正案" FontSize="11" FontWeight="SemiBold"
+                                                                       Foreground="#79A8FF" VerticalAlignment="Center"/>
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                                <Button Content="📋 修正案をコピー"
+                                                                        Style="{StaticResource MiniButton}"
+                                                                        Tag="{Binding SuggestedFix}"
+                                                                        Click="CopyFixBtn_Click"/>
+                                                            </StackPanel>
+                                                        </Grid>
+
+                                                        <TextBox Grid.Row="1"
+                                                                 Text="{Binding SuggestedFix, Mode=OneWay}"
+                                                                 IsReadOnly="True"
+                                                                 Background="#0A0E18"
+                                                                 Foreground="#CE9178"
+                                                                 BorderThickness="0"
+                                                                 Padding="6"
+                                                                 FontFamily="Cascadia Code, Consolas"
+                                                                 FontSize="11"
+                                                                 TextWrapping="Wrap"
+                                                                 VerticalScrollBarVisibility="Auto"
+                                                                 MaxHeight="150"/>
+                                                    </Grid>
                                                 </Border>
                                             </Grid>
                                         </Border>
@@ -388,10 +557,14 @@
                         <!-- No issues found state -->
                         <StackPanel x:Name="NoIssuesState" Visibility="Collapsed"
                                     VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="✅" FontSize="40" HorizontalAlignment="Center"/>
+                            <TextBlock Text="✅" FontSize="44" HorizontalAlignment="Center"/>
                             <TextBlock Text="問題は見つかりませんでした！"
-                                       FontSize="13" Margin="0,12,0,0"
+                                       FontSize="14" FontWeight="Bold" Margin="0,12,0,0"
                                        Foreground="{StaticResource SeverityLowBrush}"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="コードは安全で論理的な懸念事項は見当たりません。"
+                                       FontSize="11" Margin="0,6,0,0"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
                                        HorizontalAlignment="Center"/>
                         </StackPanel>
                     </Grid>
@@ -407,7 +580,7 @@
             <Grid Margin="16,0">
                 <TextBlock x:Name="StatusLabel" Style="{StaticResource StatusLabel}"
                            Text="アプリを起動中..." VerticalAlignment="Center"/>
-                <TextBlock Text="対象: 関数単位のコード  ·  レビュー項目: うっかりミス / セキュリティ"
+                <TextBlock Text="対象: C# コード  ·  レビュー項目: うっかりミス / セキュリティ / パフォーマンス"
                            HorizontalAlignment="Right"
                            Style="{StaticResource StatusLabel}"/>
             </Grid>

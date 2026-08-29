@@ -15,36 +15,35 @@ There are no tests and no lint configuration. The solution uses the modern `.sln
 ## What This Is
 
 A WPF desktop application that performs AI-powered C# code review entirely locally, using:
-- **Microsoft Foundry Local** (`Microsoft.AI.Foundry.Local.WinML` v1.1.0) — manages model download, caching, and the inference lifecycle; provides `OpenAIChatClient` for chat completions
-- **OpenAI SDK** (`OpenAI` v2.10.0) — present as a dependency but chat is handled via the Foundry Local `OpenAIChatClient` (which internally uses `Betalgo.Ranul.OpenAI` v9.1.0)
+- **Microsoft Foundry Local** (`Microsoft.AI.Foundry.Local.WinML` v1.1.0) — manages model download, caching, and inference lifecycle
+- **AvalonEdit** (`AvalonEdit` v6.3.1) — rich C# code editor with syntax highlighting, line numbers, and dark styling
+- **CommunityToolkit.Mvvm** (`CommunityToolkit.Mvvm` v8.4.2) — modern MVVM infrastructure
+- **OpenAI SDK** (`OpenAI` v2.10.0) — present as a dependency; chat completions run via Foundry Local `OpenAIChatClient`
 
 Target: `net9.0-windows10.0.26100.0` (WPF, Windows-only). The UI is in Japanese.
 
-Current model: **`qwen3-4b`** (alias registered in the Foundry Local catalog). Run `foundry model list` to confirm available aliases. A commented-out alternative `qwen2.5-coder-1.5b` exists in the source.
+Supported models in catalog:
+- `qwen3-4b` (Default: High accuracy reasoning model)
+- `qwen2.5-coder-1.5b` (Fast, lightweight coding model)
+- `qwen2.5-coder-7b` (High accuracy coding model)
+- `phi-4-mini` (Microsoft 3.8B compact model)
+- `qwen3.5-4b` (Latest general reasoning model)
 
 ## Architecture
 
-**`CodeReviewService.cs`** — the only service class. Manages the full Foundry Local lifecycle:
-1. Creates a `FoundryLocalManager` and downloads/caches the model
-2. `ReviewAsync(code, ct)` — streams a JSON response from the model via `OpenAIChatClient`, parses it into `ReviewItem[]`
-3. Implements `IAsyncDisposable`: unloads model then disposes the logger factory on disposal
+**`CodeReviewService.cs`** — manages the Foundry Local lifecycle and model execution:
+1. Manages `FoundryLocalManager` instance and model switching (`SwitchModelAsync`)
+2. `ReviewAsync(code, progress, ct)` — streams response via `OpenAIChatClient`, sets `Temperature = 0.1` and `MaxTokens = 8192`
+3. Parses JSON into `ReviewItem[]` including `Severity`, `Category`, `Title`, `Description`, `LineHint`, and `SuggestedFix`
+4. Implements `IAsyncDisposable` for clean unloading and logger disposal
 
-The model is instructed via a hardcoded system prompt to return JSON `{"findings": [...]}`. `ParseResponse` strips Qwen3 `<think>...</think>` blocks, then strips markdown fences, then deserializes. If JSON parsing fails, a single fallback `ReviewItem` describing the parse error is returned instead of throwing.
+**`MainWindow.xaml/.xaml.cs`** — UI and interaction:
+- AvalonEdit `TextEditor` with C# highlighting, Drag & Drop (`.cs` files), Open, Paste, and Clear actions
+- Dynamic Model ComboBox and GPU/Device badge
+- Review progress state with **Cancel (⏹ 中止)** support
+- Review results with High/Med/Low counts, clickable `LineHint` (jumps to line in editor), `SuggestedFix` preview and copy button
+- **📋 Markdown Copy** button to export entire review findings to clipboard
 
-**`MainWindow.xaml/.xaml.cs`** — all UI logic. Key patterns:
-- `ShowState(string)` drives visibility for the four UI states: `Empty`, `Loading`, `Results`, `NoIssues`
-- Results are sorted by severity (High → Med → Low) before display
-- A `CancellationTokenSource` is created per review and cancelled on window close
-- Shutdown calls `DisposeAsync()` as fire-and-forget (intentional, avoids `async void`)
+**`App.xaml.cs`** — registers three global exception handlers (dispatcher, AppDomain, TaskScheduler) writing to `crash.log`.
 
-**`App.xaml.cs`** — registers three global exception handlers (dispatcher, AppDomain, TaskScheduler) that write to `crash.log` in the output directory and show an error dialog.
-
-**XAML value converters** (defined inside `MainWindow.xaml`): `SeverityToColorConverter`, `SeverityToLabelConverter`, `SeverityToIconConverter` — map the `Severity` enum to UI presentation.
-
-## Key Design Decisions
-
-- `Task.Run()` wraps `InitializeAsync` and `DisposeAsync` to keep the UI thread unblocked
-- Logging minimum level is `Warning`; the Foundry Local manager receives a console logger
-- `chatClient.Settings.MaxTokens = 4096` is set explicitly — local models default to a very small limit (often 256–512 tokens) that truncates JSON mid-response
-- The system prompt begins with `/no_think` to disable Qwen3's thinking mode; `ParseResponse` also strips `<think>...</think>` as a fallback in case thinking output leaks through
-- Chat is performed via `IModel.GetChatClientAsync()` → `OpenAIChatClient` (Foundry Local's own client), not the standard `OpenAI.Chat.ChatClient`. Use `chatClient.Settings.*` to tune generation parameters (Temperature, MaxTokens, TopP, FrequencyPenalty)
+**XAML value converters**: `SeverityToColorConverter`, `SeverityToLabelConverter`, `SeverityToIconConverter`, `NullToCollapsedConverter`.
