@@ -14,13 +14,20 @@ There are no tests and no lint configuration. The solution uses the modern `.sln
 
 ## What This Is
 
-A WPF desktop application that performs AI-powered C# code review entirely locally, using:
+A WPF desktop application that performs AI-powered multi-language code review entirely locally, using:
 - **Microsoft Foundry Local** (`Microsoft.AI.Foundry.Local.WinML` v1.1.0) — manages model download, caching, and inference lifecycle
-- **AvalonEdit** (`AvalonEdit` v6.3.1) — rich C# code editor with syntax highlighting, line numbers, and dark styling
+- **AvalonEdit** (`AvalonEdit` v6.3.1) — rich multi-language code editor with syntax highlighting, line numbers, and dark styling
 - **CommunityToolkit.Mvvm** (`CommunityToolkit.Mvvm` v8.4.2) — modern MVVM infrastructure
 - **OpenAI SDK** (`OpenAI` v2.10.0) — present as a dependency; chat completions run via Foundry Local `OpenAIChatClient`
 
 Target: `net9.0-windows10.0.26100.0` (WPF, Windows-only). The UI is in Japanese.
+
+Supported languages:
+- `C#` (`.cs`)
+- `C` (`.c`, `.h`)
+- `C++` (`.cpp`, `.cc`, `.cxx`, `.hpp`, `.hxx`, `.h`)
+- `Python` (`.py`, `.pyw`)
+- `Dart` (`.dart`)
 
 Supported models in catalog:
 - `qwen3-4b` (Default: High accuracy reasoning model)
@@ -31,18 +38,20 @@ Supported models in catalog:
 
 ## Architecture
 
+**`LanguageConfig.cs`** — defines supported programming languages (`LanguageOption`), sample code presets, file filters, and XSHD syntax highlighting definitions (Python, Dart).
+
 **`CodeReviewService.cs`** — manages the Foundry Local lifecycle and model execution:
 1. Manages `FoundryLocalManager` instance and model switching (`SwitchModelAsync`)
-2. `ReviewAsync(code, progress, ct)` — streams response via `OpenAIChatClient`, sets `Temperature = 0.1` and `MaxTokens = 8192`
+2. `ReviewAsync(code, language, progress, ct)` — streams response via `OpenAIChatClient`, sets `Temperature = 0.1` and `MaxTokens = 8192` with language-specialized prompts
 3. Parses JSON into `ReviewItem[]` including `Severity`, `Category`, `Title`, `Description`, `LineHint`, and `SuggestedFix`
 4. Implements `IAsyncDisposable` for clean unloading and logger disposal
 
 **`MainWindow.xaml/.xaml.cs`** — UI and interaction:
-- AvalonEdit `TextEditor` with C# highlighting, Drag & Drop (`.cs` files), Open, Paste, and Clear actions
-- Dynamic Model ComboBox and GPU/Device badge
+- AvalonEdit `TextEditor` with multi-language syntax highlighting, Drag & Drop (auto-detects language), Open, Paste, and Clear actions
+- Dynamic Language ComboBox (`C#`, `C`, `C++`, `Python`, `Dart`), Model ComboBox, and GPU/Device badge
 - Review progress state with **Cancel (⏹ 中止)** support
 - Review results with High/Med/Low counts, clickable `LineHint` (jumps to line in editor), `SuggestedFix` preview and copy button
-- **📋 Markdown Copy** button to export entire review findings to clipboard
+- **📋 Markdown Copy** button to export entire review findings to clipboard with appropriate language code fences
 
 **`App.xaml.cs`** — registers three global exception handlers (dispatcher, AppDomain, TaskScheduler) writing to `crash.log`.
 

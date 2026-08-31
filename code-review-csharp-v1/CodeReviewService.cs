@@ -154,15 +154,16 @@ public class CodeReviewService : IAsyncDisposable
     }
 
     // ── Review ──────────────────────────────────────
-    public async Task<List<ReviewItem>> ReviewAsync(string code, IProgress<string>? progress = null, CancellationToken ct = default)
+    public async Task<List<ReviewItem>> ReviewAsync(string code, LanguageOption? language = null, IProgress<string>? progress = null, CancellationToken ct = default)
     {
         if (!_ready || _model is null || _manager is null)
             throw new InvalidOperationException("InitializeAsync を先に呼び出してください。");
 
+        var lang = language ?? LanguageConfig.SupportedLanguages[0];
         var chatClient = await _model.GetChatClientAsync();
 
-        var systemPrompt = BuildSystemPrompt();
-        var userPrompt = BuildUserPrompt(code);
+        var systemPrompt = BuildSystemPrompt(lang.DisplayName);
+        var userPrompt = BuildUserPrompt(code, lang.DisplayName, lang.MarkdownCodeFence);
 
         var sb = new StringBuilder();
 
@@ -201,13 +202,13 @@ public class CodeReviewService : IAsyncDisposable
         _loggerFactory?.Dispose();
     }
 
-    private static string BuildSystemPrompt() => """
+    private static string BuildSystemPrompt(string languageName) => $$"""
         /no_think
         ### Role
-        You are an expert software engineer and code reviewer.
+        You are an expert software engineer and code reviewer specializing in {{languageName}}.
 
         ### Task
-        Review the provided C# code and identify ONLY concrete issues: logic mistakes, security vulnerabilities, memory/resource leaks, and potential runtime exceptions.
+        Review the provided {{languageName}} code and identify ONLY concrete issues: logic mistakes, security vulnerabilities, memory/resource leaks, and potential runtime exceptions.
         - Do NOT praise the code.
         - Do NOT suggest mere style preferences or subjective clean code opinions.
         - For each finding, provide a clear explanation and a concrete suggested fix snippet.
@@ -225,7 +226,7 @@ public class CodeReviewService : IAsyncDisposable
               "title": "<short title in Japanese, max 50 chars>",
               "description": "<concrete explanation in Japanese, 1-3 sentences>",
               "line_hint": "<relevant line number, method name, or identifier — e.g. 'Line 12: userPassword' or 'ExecuteQuery'>",
-              "suggested_fix": "<concrete replacement C# code snippet for the problematic part, or empty if not applicable>"
+              "suggested_fix": "<concrete replacement {{languageName}} code snippet for the problematic part, or empty if not applicable>"
             }
           ]
         }
@@ -238,8 +239,8 @@ public class CodeReviewService : IAsyncDisposable
         If no issues are found, return: {"findings": []}
         """;
 
-    private static string BuildUserPrompt(string code) =>
-        $"以下のC#コードをレビューしてください:\n\n```csharp\n{code}\n```";
+    private static string BuildUserPrompt(string code, string languageName, string codeFence) =>
+        $"以下の{languageName}コードをレビューしてください:\n\n```{codeFence}\n{code}\n```";
 
     private static List<ReviewItem> ParseResponse(string raw)
     {
@@ -300,7 +301,7 @@ public class CodeReviewService : IAsyncDisposable
         text = Regex.Replace(text, @"^<(think|thought)>[\s\S]*?(?=\{)", "", RegexOptions.IgnoreCase);
 
         // 3. Extract content inside markdown ```json ... ``` or ```csharp ... ``` or ``` ... ```
-        var codeBlockMatch = Regex.Match(text, @"```(?:json|csharp)?\s*(\{[\s\S]*?\})\s*```", RegexOptions.IgnoreCase);
+        var codeBlockMatch = Regex.Match(text, @"```(?:[a-zA-Z0-9_\+#\-]+)?\s*(\{[\s\S]*?\})\s*```", RegexOptions.IgnoreCase);
         if (codeBlockMatch.Success)
         {
             text = codeBlockMatch.Groups[1].Value;

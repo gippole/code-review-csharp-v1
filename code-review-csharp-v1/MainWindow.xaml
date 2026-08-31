@@ -225,12 +225,19 @@
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Model Switcher & Device Badge -->
+                <!-- Language Switcher, Model Switcher & Device Badge -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Language selector -->
+                    <TextBlock Text="言語:" VerticalAlignment="Center" FontSize="12"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="LanguageCombo" Width="100" Height="30" VerticalContentAlignment="Center"
+                              Margin="0,0,16,0"
+                              SelectionChanged="LanguageCombo_SelectionChanged"/>
+
                     <!-- Model selector -->
                     <TextBlock Text="モデル:" VerticalAlignment="Center" FontSize="12"
                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0"/>
-                    <ComboBox x:Name="ModelCombo" Width="200" Height="30" VerticalContentAlignment="Center"
+                    <ComboBox x:Name="ModelCombo" Width="190" Height="30" VerticalContentAlignment="Center"
                               Margin="0,0,16,0"
                               SelectionChanged="ModelCombo_SelectionChanged"/>
 
@@ -276,7 +283,7 @@
 
                 <!-- Header & Quick actions -->
                 <Grid Grid.Row="0" Margin="0,0,0,8">
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="📝  C# コード入力 (DnD対応)" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="CodeInputHeaderLabel" Style="{StaticResource SectionLabel}" Text="📝  C# コード入力 (DnD対応)" VerticalAlignment="Center"/>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button x:Name="OpenFileBtn" Content="📂 開く"
                                 Style="{StaticResource GhostButton}"
@@ -387,7 +394,7 @@
                                        FontSize="13" Margin="0,12,0,0"
                                        Foreground="{StaticResource TextSecondaryBrush}"
                                        HorizontalAlignment="Center"/>
-                            <TextBlock Text="(.cs ファイルを直接ドラッグ＆ドロップしても読み込めます)"
+                            <TextBlock Text="(.cs, .c, .cpp, .py, .dart などのソースファイルを直接ドラッグ＆ドロップしても読み込めます)"
                                        FontSize="11" Margin="0,6,0,0"
                                        Foreground="#606085"
                                        HorizontalAlignment="Center"/>
@@ -580,7 +587,7 @@
             <Grid Margin="16,0">
                 <TextBlock x:Name="StatusLabel" Style="{StaticResource StatusLabel}"
                            Text="アプリを起動中..." VerticalAlignment="Center"/>
-                <TextBlock Text="対象: C# コード  ·  レビュー項目: うっかりミス / セキュリティ / パフォーマンス"
+                <TextBlock x:Name="TargetScopeLabel" Text="対象: C# コード  ·  レビュー項目: うっかりミス / セキュリティ / パフォーマンス"
                            HorizontalAlignment="Right"
                            Style="{StaticResource StatusLabel}"/>
             </Grid>

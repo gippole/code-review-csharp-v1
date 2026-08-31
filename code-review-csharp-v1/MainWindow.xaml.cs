@@ -18,29 +18,8 @@ public partial class MainWindow : Window
     private List<ReviewItem> _currentFindings = new();
     private bool _isInitializing;
 
-    private const string DefaultSampleCode = """
-        using System;
-        using System.IO;
-
-        public class OrderProcessor
-        {
-            // レビューしたい C# コードをここに貼り付けるか、
-            // 上部の「📂 開く」またはファイルをドラッグ＆ドロップしてください。
-            public void ProcessOrder(string customerId, string rawPassword, decimal amount)
-            {
-                // SQL インジェクションのリスク例
-                string sql = "SELECT * FROM Orders WHERE CustomerId = '" + customerId + "'";
-                Console.WriteLine($"SQL: {sql}");
-
-                // パスワードの平文ログ出力とリソース解放漏れ例
-                var fs = new FileStream("audit.log", FileMode.Append);
-                var writer = new StreamWriter(fs);
-                writer.WriteLine($"Customer {customerId} with pass {rawPassword} charged {amount:C}");
-                writer.Flush();
-                // ※ fs, writer が Dispose されていません
-            }
-        }
-        """;
+    private LanguageOption SelectedLanguage =>
+        LanguageCombo.SelectedItem as LanguageOption ?? LanguageConfig.SupportedLanguages[0];
 
     public MainWindow()
     {
@@ -52,6 +31,7 @@ public partial class MainWindow : Window
     // ── Startup ──────────────────────────────────────────────────────────────
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        InitializeLanguageComboBox();
         InitializeEditor();
         InitializeModelComboBox();
 
@@ -90,15 +70,23 @@ public partial class MainWindow : Window
         }
     }
 
+    private void InitializeLanguageComboBox()
+    {
+        LanguageConfig.RegisterCustomHighlightings();
+        LanguageCombo.ItemsSource = LanguageConfig.SupportedLanguages;
+        LanguageCombo.DisplayMemberPath = nameof(LanguageOption.DisplayName);
+        LanguageCombo.SelectedIndex = 0;
+        UpdateLanguageUI(SelectedLanguage);
+    }
+
     private void InitializeEditor()
     {
-        // Setup C# syntax highlighting
-        CodeEditor.SyntaxHighlighting = HighlightingManager.Instance.GetDefinition("C#");
+        ApplyLanguageHighlighting(SelectedLanguage);
         CodeEditor.TextArea.SelectionCornerRadius = 2;
         CodeEditor.TextArea.SelectionBrush = new SolidColorBrush(Color.FromArgb(90, 123, 97, 255));
         CodeEditor.TextArea.SelectionBorder = new Pen(new SolidColorBrush(Color.FromRgb(123, 97, 255)), 1);
 
-        CodeEditor.Text = DefaultSampleCode;
+        CodeEditor.Text = SelectedLanguage.SampleCode;
 
         // Caret position info
         CodeEditor.TextArea.Caret.PositionChanged += (s, e) =>
@@ -108,6 +96,37 @@ public partial class MainWindow : Window
             int totalLines = CodeEditor.Document.LineCount;
             LineInfoText.Text = $"行 {line}, 列 {col}  ·  合計 {totalLines} 行";
         };
+    }
+
+    private void ApplyLanguageHighlighting(LanguageOption lang)
+    {
+        CodeEditor.SyntaxHighlighting = HighlightingManager.Instance.GetDefinition(lang.HighlightingName);
+    }
+
+    private void UpdateLanguageUI(LanguageOption lang)
+    {
+        CodeInputHeaderLabel.Text = $"📝  {lang.DisplayName} コード入力 (DnD対応)";
+        TargetScopeLabel.Text = $"対象: {lang.DisplayName} コード  ·  レビュー項目: うっかりミス / セキュリティ / パフォーマンス";
+    }
+
+    private void LanguageCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (LanguageCombo.SelectedItem is not LanguageOption selectedLang) return;
+
+        ApplyLanguageHighlighting(selectedLang);
+        UpdateLanguageUI(selectedLang);
+
+        // Check if current text is empty or matches any default sample code
+        string currentText = CodeEditor.Text.Trim();
+        bool isSampleOrEmpty = string.IsNullOrEmpty(currentText) ||
+            LanguageConfig.SupportedLanguages.Any(l => l.SampleCode.Trim().Equals(currentText, StringComparison.Ordinal));
+
+        if (isSampleOrEmpty)
+        {
+            CodeEditor.Text = selectedLang.SampleCode;
+        }
+
+        SetStatus($"言語を '{selectedLang.DisplayName}' に設定しました");
     }
 
     private void InitializeModelComboBox()
@@ -180,6 +199,7 @@ public partial class MainWindow : Window
     {
         ReviewBtn.IsEnabled = ready;
         ModelCombo.IsEnabled = ready;
+        LanguageCombo.IsEnabled = ready;
         InitDot.Fill = ready
             ? new SolidColorBrush(Color.FromRgb(0x50, 0xFA, 0x7B))
             : new SolidColorBrush(Color.FromRgb(0xFF, 0x55, 0x55));
@@ -205,16 +225,21 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Filter = "C# ファイル (*.cs)|*.cs|すべてのファイル (*.*)|*.*",
-            Title = "レビューする C# ファイルを選択"
+            Filter = LanguageConfig.BuildFullOpenFileDialogFilter(),
+            Title = $"レビューするソースファイルを選択 (現在の言語: {SelectedLanguage.DisplayName})"
         };
 
         if (dialog.ShowDialog() == true)
         {
             try
             {
+                var matchedLang = LanguageConfig.FindByFilePath(dialog.FileName);
+                if (matchedLang is not null && matchedLang != SelectedLanguage)
+                {
+                    LanguageCombo.SelectedItem = matchedLang;
+                }
                 CodeEditor.Text = File.ReadAllText(dialog.FileName);
-                SetStatus($"ファイル '{Path.GetFileName(dialog.FileName)}' を読み込みました");
+                SetStatus($"ファイル '{Path.GetFileName(dialog.FileName)}' ({SelectedLanguage.DisplayName}) を読み込みました");
             }
             catch (Exception ex)
             {
@@ -262,8 +287,13 @@ public partial class MainWindow : Window
             {
                 try
                 {
+                    var matchedLang = LanguageConfig.FindByFilePath(files[0]);
+                    if (matchedLang is not null && matchedLang != SelectedLanguage)
+                    {
+                        LanguageCombo.SelectedItem = matchedLang;
+                    }
                     CodeEditor.Text = File.ReadAllText(files[0]);
-                    SetStatus($"ドラッグ＆ドロップで '{Path.GetFileName(files[0])}' を読み込みました");
+                    SetStatus($"ドラッグ＆ドロップで '{Path.GetFileName(files[0])}' ({SelectedLanguage.DisplayName}) を読み込みました");
                 }
                 catch (Exception ex)
                 {
@@ -280,7 +310,7 @@ public partial class MainWindow : Window
         var code = CodeEditor.Text.Trim();
         if (string.IsNullOrWhiteSpace(code))
         {
-            MessageBox.Show("レビューする C# コードを入力してください。", "入力エラー",
+            MessageBox.Show($"レビューする {SelectedLanguage.DisplayName} コードを入力してください。", "入力エラー",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -290,15 +320,16 @@ public partial class MainWindow : Window
         ReviewBtn.Visibility = Visibility.Collapsed;
         CancelBtn.Visibility = Visibility.Visible;
         ModelCombo.IsEnabled = false;
+        LanguageCombo.IsEnabled = false;
 
         _reviewCts?.Cancel();
         _reviewCts = new CancellationTokenSource();
 
         ShowState("loading");
-        LoadingText.Text = "AI がコードを解析・推論中...";
+        LoadingText.Text = $"AI が {SelectedLanguage.DisplayName} コードを解析・推論中...";
         SummaryPanel.Visibility = Visibility.Collapsed;
         CopyMarkdownBtn.Visibility = Visibility.Collapsed;
-        SetStatus("レビュー実行中...");
+        SetStatus($"レビュー実行中 ({SelectedLanguage.DisplayName})...");
 
         var progress = new Progress<string>(msg =>
         {
@@ -308,13 +339,13 @@ public partial class MainWindow : Window
 
         try
         {
-            var items = await _service!.ReviewAsync(code, progress, _reviewCts.Token);
+            var items = await _service!.ReviewAsync(code, SelectedLanguage, progress, _reviewCts.Token);
             _currentFindings = items;
 
             if (items.Count == 0)
             {
                 ShowState("noissues");
-                SetStatus("レビュー完了 — 潜在的な問題は見つかりませんでした 🎉");
+                SetStatus($"レビュー完了 — {SelectedLanguage.DisplayName} コードに潜在的な問題は見つかりませんでした 🎉");
                 SummaryPanel.Visibility = Visibility.Collapsed;
                 CopyMarkdownBtn.Visibility = Visibility.Collapsed;
             }
@@ -364,6 +395,7 @@ public partial class MainWindow : Window
             ReviewBtn.Visibility = Visibility.Visible;
             CancelBtn.Visibility = Visibility.Collapsed;
             ModelCombo.IsEnabled = true;
+            LanguageCombo.IsEnabled = true;
         }
     }
 
@@ -378,8 +410,10 @@ public partial class MainWindow : Window
     {
         if (_currentFindings.Count == 0) return;
 
+        var currentLang = SelectedLanguage;
         var sb = new StringBuilder();
         sb.AppendLine($"# AI コードレビュー結果 ({DateTime.Now:yyyy-MM-dd HH:mm})");
+        sb.AppendLine($"**対象言語**: {currentLang.DisplayName}");
         sb.AppendLine($"**使用モデル**: {_service?.CurrentModelAlias ?? "Unknown"} ({_service?.CurrentDeviceType ?? "GPU"})");
         sb.AppendLine();
 
@@ -404,7 +438,7 @@ public partial class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(item.SuggestedFix))
             {
                 sb.AppendLine("- **推奨修正コード**:");
-                sb.AppendLine("```csharp");
+                sb.AppendLine($"```{currentLang.MarkdownCodeFence}");
                 sb.AppendLine(item.SuggestedFix);
                 sb.AppendLine("```");
             }
